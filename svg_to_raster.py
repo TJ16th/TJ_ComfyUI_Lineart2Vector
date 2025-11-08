@@ -36,6 +36,9 @@ class SVGToImage:
                 "override_stroke_color": ("STRING", {"default": "", "tooltip": "Override all stroke colors (hex: #RRGGBB or empty=use original)"}),
                 "override_stroke_width": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 50.0, "step": 0.1, "tooltip": "Override stroke width (0=use original)"}),
                 "override_fill_color": ("STRING", {"default": "", "tooltip": "Override all fill colors (hex: #RRGGBB or empty=use original)"}),
+                "show_control_points": ("BOOLEAN", {"default": False, "tooltip": "Draw square markers at path control points"}),
+                "control_point_size": ("INT", {"default": 4, "min": 1, "max": 20, "step": 1, "tooltip": "Size of control point markers"}),
+                "control_point_color": ("STRING", {"default": "#FF0000", "tooltip": "Color of control point markers (hex: #RRGGBB)"}),
                 "antialias": ("BOOLEAN", {"default": True}),
                 "clip_to_viewbox": ("BOOLEAN", {"default": True}),
             },
@@ -50,6 +53,7 @@ class SVGToImage:
                background: str = "transparent", background_color: str = "#00000000",
                dpi: int = 96, padding: int = 0, 
                override_stroke_color: str = "", override_stroke_width: float = 0.0, override_fill_color: str = "",
+               show_control_points: bool = False, control_point_size: int = 4, control_point_color: str = "#FF0000",
                antialias: bool = True, clip_to_viewbox: bool = True):
         # Compute base size from SVG
         base_w, base_h = self._infer_svg_size(svg_string)
@@ -60,7 +64,8 @@ class SVGToImage:
         # Render SVG using basic PIL-based path renderer
         try:
             img = self._render_svg_basic(svg_string, int(tgt_w), int(tgt_h), background, background_color,
-                                         override_stroke_color, override_stroke_width, override_fill_color)
+                                         override_stroke_color, override_stroke_width, override_fill_color,
+                                         show_control_points, control_point_size, control_point_color)
         except Exception as e:
             # Fallback: create error placeholder
             img = Image.new("RGBA", (int(tgt_w), int(tgt_h)), (255, 0, 0, 128))
@@ -99,13 +104,19 @@ class SVGToImage:
                 "stroke_color": override_stroke_color if override_stroke_color else "original",
                 "stroke_width": float(override_stroke_width) if override_stroke_width > 0 else "original",
                 "fill_color": override_fill_color if override_fill_color else "original"
+            },
+            "control_points": {
+                "enabled": bool(show_control_points),
+                "size": int(control_point_size),
+                "color": control_point_color
             }
         }
         return (tensor, json.dumps(meta, indent=2))
 
     # ----- helpers -----
     def _render_svg_basic(self, svg_string: str, width: int, height: int, background: str, bg_color: str,
-                          override_stroke_color: str, override_stroke_width: float, override_fill_color: str) -> Image.Image:
+                          override_stroke_color: str, override_stroke_width: float, override_fill_color: str,
+                          show_control_points: bool, control_point_size: int, control_point_color: str) -> Image.Image:
         """
         Basic SVG path renderer using PIL ImageDraw.
         Limitations: Only supports simple path commands (M, L, C, Z); no complex styles/filters.
@@ -179,6 +190,19 @@ class SVGToImage:
                 stroke_rgba = self._color_to_rgba(stroke_color)
                 if stroke_rgba:
                     draw.line(coords, fill=stroke_rgba, width=int(stroke_width * scale_x))
+            
+            # Draw control points if enabled
+            if show_control_points and coords:
+                cp_rgba = self._color_to_rgba(control_point_color)
+                if cp_rgba:
+                    half_size = control_point_size // 2
+                    for x, y in coords:
+                        # Draw square marker
+                        draw.rectangle(
+                            [x - half_size, y - half_size, x + half_size, y + half_size],
+                            fill=cp_rgba,
+                            outline=cp_rgba
+                        )
         
         return img
     
