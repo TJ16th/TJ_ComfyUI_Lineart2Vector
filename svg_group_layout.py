@@ -50,6 +50,9 @@ class SVGGroupLayout:
                 "auto_layout": ("BOOLEAN", {"default": True}),
                 "tile_cols": ("INT", {"default": 4, "min": 1, "max": 32, "step": 1}),
                 "tile_spacing": ("INT", {"default": 16, "min": 0, "max": 512, "step": 1}),
+                "show_all_background": ("BOOLEAN", {"default": False, "tooltip": "Show all paths in background at low opacity"}),
+                "background_opacity": ("FLOAT", {"default": 0.15, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "background_stroke_color": ("STRING", {"default": "#888888"}),
                 "show_grid_lines": ("BOOLEAN", {"default": True}),
                 "grid_line_color": ("STRING", {"default": "#CCCCCC"}),
                 "grid_line_width": ("INT", {"default": 1, "min": 1, "max": 10, "step": 1}),
@@ -77,6 +80,9 @@ class SVGGroupLayout:
                auto_layout: bool = True,
                tile_cols: int = 4,
                tile_spacing: int = 16,
+               show_all_background: bool = False,
+               background_opacity: float = 0.15,
+               background_stroke_color: str = "#888888",
                show_grid_lines: bool = True,
                grid_line_color: str = "#CCCCCC",
                grid_line_width: int = 1,
@@ -194,6 +200,22 @@ class SVGGroupLayout:
                 for r in range(rows + 1):
                     y = int(spacing + r * (cell_h + spacing))
                     draw.line([(0, y), (canvas_width, y)], fill=grid_rgba, width=grid_line_width)
+
+        # Draw all paths as background (low opacity) if requested
+        if show_all_background:
+            draw = ImageDraw.Draw(canvas, "RGBA")
+            ns_path = "{http://www.w3.org/2000/svg}path"
+            bg_stroke_rgba = self._color_to_rgba(background_stroke_color, background_opacity)
+            if bg_stroke_rgba:
+                for path_elem in root.iter(ns_path):
+                    d = path_elem.get("d")
+                    if not d:
+                        continue
+                    # Draw at original viewBox position (scale 1:1, offset by viewBox origin)
+                    coords = self._parse_svg_path(d, vb_x, vb_y, 1.0, 1.0)
+                    if coords and len(coords) >= 2:
+                        # Draw stroke only (no fill) for background reference
+                        draw.line(coords, fill=bg_stroke_rgba, width=1)
 
         # Build index for selector resolution
         # Allow selectors: #id, .class, tag (g), [attr=value]
