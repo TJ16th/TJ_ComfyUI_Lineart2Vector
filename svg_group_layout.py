@@ -30,7 +30,7 @@ from typing import List, Tuple, Optional, Dict, Any
 
 import numpy as np
 import torch
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from xml.etree import ElementTree as ET
 
 
@@ -50,6 +50,12 @@ class SVGGroupLayout:
                 "auto_layout": ("BOOLEAN", {"default": True}),
                 "tile_cols": ("INT", {"default": 4, "min": 1, "max": 32, "step": 1}),
                 "tile_spacing": ("INT", {"default": 16, "min": 0, "max": 512, "step": 1}),
+                "show_grid_lines": ("BOOLEAN", {"default": True}),
+                "grid_line_color": ("STRING", {"default": "#CCCCCC"}),
+                "grid_line_width": ("INT", {"default": 1, "min": 1, "max": 10, "step": 1}),
+                "show_labels": ("BOOLEAN", {"default": True}),
+                "label_color": ("STRING", {"default": "#000000"}),
+                "label_size": ("INT", {"default": 12, "min": 6, "max": 48, "step": 1}),
                 "show_control_points": ("BOOLEAN", {"default": False}),
                 "control_point_size": ("INT", {"default": 3, "min": 1, "max": 20, "step": 1}),
                 "control_point_color": ("STRING", {"default": "#00AEEF"}),
@@ -71,6 +77,12 @@ class SVGGroupLayout:
                auto_layout: bool = True,
                tile_cols: int = 4,
                tile_spacing: int = 16,
+               show_grid_lines: bool = True,
+               grid_line_color: str = "#CCCCCC",
+               grid_line_width: int = 1,
+               show_labels: bool = True,
+               label_color: str = "#000000",
+               label_size: int = 12,
                show_control_points: bool = False,
                control_point_size: int = 3,
                control_point_color: str = "#00AEEF",
@@ -158,8 +170,30 @@ class SVGGroupLayout:
                     "selector": f"#{gid}" if gid else f".auto_{idx}",
                     "x": x,
                     "y": y,
-                    "scale": min(cell_w / max(vb_w, 1), cell_h / max(vb_h, 1))
+                    "scale": min(cell_w / max(vb_w, 1), cell_h / max(vb_h, 1)),
+                    "cell_index": idx,  # for label display
                 })
+
+        # Draw grid lines and labels for auto layout
+        if auto_used and show_grid_lines:
+            draw = ImageDraw.Draw(canvas, "RGBA")
+            grid_rgba = self._color_to_rgba(grid_line_color, 1.0)
+            if grid_rgba:
+                cols = max(1, int(tile_cols))
+                spacing = max(0, int(tile_spacing))
+                cell_w = (canvas_width - spacing * (cols + 1)) / cols
+                rows = math.ceil(len(layout_items) / cols)
+                cell_h = (canvas_height - spacing * (rows + 1)) / max(1, rows)
+                
+                # Vertical lines (column separators)
+                for c in range(cols + 1):
+                    x = int(spacing + c * (cell_w + spacing))
+                    draw.line([(x, 0), (x, canvas_height)], fill=grid_rgba, width=grid_line_width)
+                
+                # Horizontal lines (row separators)
+                for r in range(rows + 1):
+                    y = int(spacing + r * (cell_h + spacing))
+                    draw.line([(0, y), (canvas_width, y)], fill=grid_rgba, width=grid_line_width)
 
         # Build index for selector resolution
         # Allow selectors: #id, .class, tag (g), [attr=value]
@@ -261,6 +295,41 @@ class SVGGroupLayout:
                 drawn += 1
 
             stats["placements"].append({"selector": selector, "drawn_paths": drawn})
+
+        # Draw labels (ID/index) for each placement
+        if show_labels and placements:
+            draw = ImageDraw.Draw(canvas, "RGBA")
+            label_rgba = self._color_to_rgba(label_color, 1.0)
+            if label_rgba:
+                # Try to load a font, fallback to default
+                try:
+                    font = ImageFont.truetype("arial.ttf", label_size)
+                except Exception:
+                    try:
+                        font = ImageFont.truetype("DejaVuSans.ttf", label_size)
+                    except Exception:
+                        font = ImageFont.load_default()
+                
+                for rule in placements:
+                    selector = str(rule.get("selector", "")).strip()
+                    x = int(rule.get("x", 0))
+                    y = int(rule.get("y", 0))
+                    
+                    # Determine label text: show ID (without #) or cell index
+                    if selector.startswith("#"):
+                        label_text = selector[1:]  # Remove # prefix
+                    elif "cell_index" in rule:
+                        label_text = str(rule["cell_index"])
+                    else:
+                        label_text = selector if selector else "?"
+                    
+                    # Draw label at top-left corner of cell with padding
+                    text_x = x + 2
+                    text_y = y + 2
+                    
+                    # Draw text with slight shadow for readability
+                    draw.text((text_x + 1, text_y + 1), label_text, fill=(0, 0, 0, 128), font=font)
+                    draw.text((text_x, text_y), label_text, fill=label_rgba, font=font)
 
         # Convert to tensor
         arr = np.array(canvas).astype(np.float32) / 255.0
