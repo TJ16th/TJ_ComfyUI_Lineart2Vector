@@ -2,6 +2,8 @@
 // Adds a color widget with live preview for STRING inputs (hex) and patches known color fields.
 // Works without executing the node; updates immediately in the UI.
 
+import { app } from "../../scripts/app.js";
+
 app.registerExtension({
   name: "tj.colorpicker",
 
