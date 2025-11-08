@@ -13,7 +13,8 @@ app.registerExtension({
       // Display names from NODE_DISPLAY_NAME_MAPPINGS
       "SVG To Image", // svg_to_raster (display name)
       "SVGToImage", // legacy/defensive fallback
-      "SVGGroupLayout", // svg_group_layout
+      "SVG Group Layout", // svg_group_layout (display name)
+      "SVGGroupLayout", // legacy fallback
       "SVG Style Editor (Simple)", // svg_style_editor_simple display name
       "SVG Style Editor", // svg_style_editor
       "SVG Color Picker" // svg_color_picker

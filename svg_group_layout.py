@@ -53,6 +53,8 @@ class SVGGroupLayout:
                 "show_all_background": ("BOOLEAN", {"default": False, "tooltip": "Show all paths in background at low opacity"}),
                 "background_opacity": ("FLOAT", {"default": 0.15, "min": 0.0, "max": 1.0, "step": 0.05}),
                 "background_stroke_color": ("STRING", {"default": "#888888"}),
+                "override_fill_color": ("STRING", {"default": "", "tooltip": "Override all fill colors (empty = use original)"}),
+                "override_stroke_color": ("STRING", {"default": "", "tooltip": "Override all stroke colors (empty = use original)"}),
                 "show_grid_lines": ("BOOLEAN", {"default": True}),
                 "grid_line_color": ("STRING", {"default": "#CCCCCC"}),
                 "grid_line_width": ("INT", {"default": 1, "min": 1, "max": 10, "step": 1}),
@@ -83,6 +85,8 @@ class SVGGroupLayout:
                show_all_background: bool = False,
                background_opacity: float = 0.15,
                background_stroke_color: str = "#888888",
+               override_fill_color: str = "",
+               override_stroke_color: str = "",
                show_grid_lines: bool = True,
                grid_line_color: str = "#CCCCCC",
                grid_line_width: int = 1,
@@ -292,8 +296,9 @@ class SVGGroupLayout:
                 d = path_elem.get("d")
                 if not d:
                     continue
-                stroke_color = ov_stroke or (path_elem.get("stroke") or "black")
-                fill_color = ov_fill or (path_elem.get("fill") or "none")
+                # Priority: placement rule > global override > SVG original
+                stroke_color = ov_stroke or override_stroke_color or (path_elem.get("stroke") or "black")
+                fill_color = ov_fill or override_fill_color or (path_elem.get("fill") or "none")
                 stroke_width = ov_sw if ov_sw > 0 else float(path_elem.get("stroke-width", 1) or 1)
                 opacity = max(0.0, min(1.0, float(path_elem.get("opacity", ov_opacity))))
 
