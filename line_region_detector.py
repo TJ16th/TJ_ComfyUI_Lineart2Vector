@@ -151,10 +151,13 @@ class LineRegionDetector:
         # Canny edge detection
         edges = cv2.Canny(gray, 50, 150)
         
-        # Dilate edges to create line regions
-        kernel_size = max(3, min_width)
+        # Dilate edges to create line regions and merge both sides
+        kernel_size = max(3, max_width // 2)
         kernel = np.ones((kernel_size, kernel_size), np.uint8)
-        dilated_edges = cv2.dilate(edges, kernel, iterations=1)
+        dilated_edges = cv2.dilate(edges, kernel, iterations=2)
+        
+        # Close gaps to merge line edges
+        dilated_edges = cv2.morphologyEx(dilated_edges, cv2.MORPH_CLOSE, kernel, iterations=1)
         
         # Combine with foreground mask
         line_mask = cv2.bitwise_and(dilated_edges, foreground_mask)
@@ -183,18 +186,22 @@ class LineRegionDetector:
         """
         Hybrid method combining edge and morphology
         """
-        # Get both methods
-        edge_mask = self._edge_based_detection(gray, foreground_mask, min_width, max_width)
+        # For line art with white lines on black background, use foreground directly
+        # This avoids double edge detection
+        
+        # Use morphology to get the line regions including their thickness
         morph_mask = self._morphology_based_detection(foreground_mask, min_width, max_width)
         
-        # Combine using OR operation
-        combined = cv2.bitwise_or(edge_mask, morph_mask)
+        # If morphology didn't find much, fall back to edge detection
+        if np.sum(morph_mask > 0) < np.sum(foreground_mask > 0) * 0.1:
+            # Use the foreground mask directly as it already contains the lines
+            return foreground_mask
         
         # Clean up
         kernel = np.ones((3, 3), np.uint8)
-        combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel, iterations=1)
+        morph_mask = cv2.morphologyEx(morph_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
         
-        return combined
+        return morph_mask
     
     def _separate_fill_areas(self, foreground_mask, line_mask, fill_handling):
         """

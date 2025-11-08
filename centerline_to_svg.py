@@ -43,6 +43,14 @@ class CenterlineToSVG:
                     "step": 0.1
                 }),
                 "bezier_smoothing": ("BOOLEAN", {"default": True}),
+                "dilate_before_thin": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 10,
+                    "step": 1,
+                    "display": "number",
+                    "tooltip": "Dilate mask before thinning to merge close lines (0=disabled)"
+                }),
             },
             "optional": {
                 "original_image": ("IMAGE",),
@@ -59,7 +67,7 @@ class CenterlineToSVG:
     
     def generate_svg(self, line_mask, algorithm="ridge", smoothing=2.0, 
                     min_path_length=10, simplify_tolerance=1.0, bezier_smoothing=True,
-                    original_image=None, color_info="", preserve_colors=True):
+                    dilate_before_thin=0, original_image=None, color_info="", preserve_colors=True):
         """
         Main function to generate SVG from line mask
         """
@@ -68,6 +76,11 @@ class CenterlineToSVG:
         mask_255 = (mask_np * 255).astype(np.uint8)
         
         height, width = mask_255.shape
+        
+        # Optional: Dilate to merge close parallel lines
+        if dilate_before_thin > 0:
+            kernel = np.ones((dilate_before_thin * 2 + 1, dilate_before_thin * 2 + 1), np.uint8)
+            mask_255 = cv2.dilate(mask_255, kernel, iterations=1)
         
         # Step 1: Extract centerline
         centerline = self._extract_centerline(mask_255, algorithm)
