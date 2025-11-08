@@ -11,7 +11,8 @@ app.registerExtension({
       "SVGToImage", // svg_to_raster
       "SVGGroupLayout", // svg_group_layout
       "SVG Style Editor (Simple)", // svg_style_editor_simple display name
-      "SVG Style Editor" // svg_style_editor
+      "SVG Style Editor", // svg_style_editor
+      "SVG Color Picker" // svg_color_picker
     ]);
 
     const colorFields = new Set([
@@ -20,6 +21,8 @@ app.registerExtension({
       "override_stroke_color",
       "override_fill_color",
       "control_point_color",
+      // color picker node
+      "base_color",
       // group layout
       "grid_line_color",
       "label_color",
