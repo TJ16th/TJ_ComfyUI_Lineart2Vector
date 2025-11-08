@@ -127,14 +127,29 @@ class SVGGroupLayout:
 
         # Auto layout if requested and no placements provided
         auto_used = False
-        if (not placements) and auto_layout and top_groups:
+        layout_items = []  # items to tile: list of (elem, id, cls)
+        if (not placements) and auto_layout:
+            # If <=1 group (or no groups), treat each <path> as individual item
+            ns_path = "{http://www.w3.org/2000/svg}path"
+            all_paths = list(root.iter(ns_path))
+            if len(top_groups) <= 1 and len(all_paths) > 1:
+                # Single/no group with many paths → tile each path
+                for p in all_paths:
+                    pid = p.get("id") or ""
+                    pcls = p.get("class") or ""
+                    layout_items.append((p, pid, pcls))
+            elif top_groups:
+                # Multiple groups → tile by group
+                layout_items = top_groups
+            
+        if (not placements) and auto_layout and layout_items:
             auto_used = True
             cols = max(1, int(tile_cols))
             spacing = max(0, int(tile_spacing))
             cell_w = (canvas_width - spacing * (cols + 1)) / cols
-            rows = math.ceil(len(top_groups) / cols)
+            rows = math.ceil(len(layout_items) / cols)
             cell_h = (canvas_height - spacing * (rows + 1)) / max(1, rows)
-            for idx, (_, gid, cls) in enumerate(top_groups):
+            for idx, (_, gid, cls) in enumerate(layout_items):
                 r = idx // cols
                 c = idx % cols
                 x = int(spacing + c * (cell_w + spacing))
@@ -253,6 +268,44 @@ class SVGGroupLayout:
         return (tensor, json.dumps(stats, indent=2))
 
     # -------- helpers (shared-style with svg_to_raster) --------
+    def _element_matches_selector(self, elem: ET.Element, selector: str) -> bool:
+        if not selector:
+            return False
+        s = selector.strip()
+        if s.startswith("#"):
+            return elem.get("id") == s[1:]
+        if s.startswith("."):
+            classes = (elem.get("class") or "").split()
+            return s[1:] in classes
+        if s == "g" or s.lower() == "group":
+            return elem.tag.endswith('}g')
+        if s.startswith("[") and s.endswith("]") and "=" in s:
+            k, v = s[1:-1].split("=", 1)
+            return (elem.get(k) or "") == v
+        return False
+
+    def _find_parent(self, root: ET.Element, child: ET.Element) -> Optional[ET.Element]:
+        # xml.etree.ElementTree lacks getparent; do a DFS to find parent
+        stack = [root]
+        while stack:
+            node = stack.pop()
+            for ch in list(node):
+                if ch is child:
+                    return node
+                stack.append(ch)
+        return None
+
+    def _path_in_group_by_selector(self, root: ET.Element, path_elem: ET.Element, selector: str) -> bool:
+        # Return True if path_elem or any ancestor matches selector
+        node: Optional[ET.Element] = path_elem
+        visited = set()
+        while node is not None and node not in visited:
+            visited.add(node)
+            if self._element_matches_selector(node, selector):
+                return True
+            node = self._find_parent(root, node)
+        return False
+
     def _normalize_color(self, s: str) -> str:
         s = (s or "").strip()
         if not s:
