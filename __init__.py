@@ -5,16 +5,19 @@ Line art to vector conversion nodes
 
 from .line_region_detector import NODE_CLASS_MAPPINGS as LINE_NODES, NODE_DISPLAY_NAME_MAPPINGS as LINE_NAMES
 from .centerline_to_svg import NODE_CLASS_MAPPINGS as SVG_NODES, NODE_DISPLAY_NAME_MAPPINGS as SVG_NAMES
+from .svg_file_saver import NODE_CLASS_MAPPINGS as SAVER_NODES, NODE_DISPLAY_NAME_MAPPINGS as SAVER_NAMES
 
 # Combine all node mappings
 NODE_CLASS_MAPPINGS = {
     **LINE_NODES,
-    **SVG_NODES
+    **SVG_NODES,
+    **SAVER_NODES
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     **LINE_NAMES,
-    **SVG_NAMES
+    **SVG_NAMES,
+    **SAVER_NAMES
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
