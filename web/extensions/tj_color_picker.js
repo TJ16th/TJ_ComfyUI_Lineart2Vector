@@ -8,7 +8,9 @@ app.registerExtension({
   // Automatically convert known color fields on our nodes to use the custom widget
   beforeRegisterNodeDef(nodeType, nodeData, app) {
     const targetNodes = new Set([
-      "SVGToImage", // svg_to_raster
+      // Display names from NODE_DISPLAY_NAME_MAPPINGS
+      "SVG To Image", // svg_to_raster (display name)
+      "SVGToImage", // legacy/defensive fallback
       "SVGGroupLayout", // svg_group_layout
       "SVG Style Editor (Simple)", // svg_style_editor_simple display name
       "SVG Style Editor", // svg_style_editor
