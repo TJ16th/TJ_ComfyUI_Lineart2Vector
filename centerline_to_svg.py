@@ -170,11 +170,12 @@ class CenterlineToSVG:
         dilated = cv2.dilate(dist_norm, kernel, iterations=1)
         ridge = (dist_norm == dilated) & (dist_norm > 0.1)
         
-        # Thin the ridge
+        # Thin the ridge using skimage skeletonize
         ridge_uint8 = (ridge * 255).astype(np.uint8)
-        thinned = cv2.ximgproc.thinning(ridge_uint8, thinningType=cv2.ximgproc.THINNING_ZHANGSUEN)
+        ridge_bool = ridge_uint8 > 127
+        thinned = skeletonize(ridge_bool)
         
-        return thinned
+        return (thinned * 255).astype(np.uint8)
     
     def _extract_paths(self, centerline, min_length):
         """
