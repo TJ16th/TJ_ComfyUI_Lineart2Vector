@@ -43,6 +43,14 @@ class SVGPathCleanup:
                     "step": 0.1,
                     "tooltip": "Path simplification tolerance"
                 }),
+                "remove_near_duplicate_paths": ("BOOLEAN", {"default": True}),
+                "near_duplicate_distance": ("FLOAT", {
+                    "default": 1.5,
+                    "min": 0.0,
+                    "max": 10.0,
+                    "step": 0.1,
+                    "tooltip": "Treat two paths as duplicates if their bidirectional average distance is below this threshold"
+                }),
                 "round_coordinates": ("BOOLEAN", {"default": True}),
                 "decimal_places": ("INT", {
                     "default": 2,
@@ -64,7 +72,8 @@ class SVGPathCleanup:
     
     def cleanup_svg(self, svg_string, remove_short_paths=True, min_path_length=5.0,
                    merge_close_paths=True, merge_distance=2.0, simplify_paths=True,
-                   simplify_tolerance=0.5, round_coordinates=True, decimal_places=2,
+                   simplify_tolerance=0.5, remove_near_duplicate_paths=True,
+                   near_duplicate_distance=1.5, round_coordinates=True, decimal_places=2,
                    remove_duplicate_paths=True):
         """
         Clean up SVG by removing short paths, merging close paths, and simplifying
@@ -93,23 +102,32 @@ class SVGPathCleanup:
                         'points': self._parse_path_d(d)
                     })
             
-            # Step 1: Remove duplicate paths
+            exact_before = len(path_data_list)
+            # Step 1: Remove exact duplicate paths
             if remove_duplicate_paths:
                 path_data_list = self._remove_duplicates(path_data_list)
+            exact_removed = exact_before - len(path_data_list)
             
             # Step 2: Remove short paths
             if remove_short_paths:
                 path_data_list = self._remove_short_paths(path_data_list, min_path_length)
             
-            # Step 3: Merge close paths
+            # Step 3: Simplify paths first to stabilize duplicate detection
+            if simplify_paths:
+                path_data_list = self._simplify_paths(path_data_list, simplify_tolerance)
+
+            # Step 4: Remove near-duplicate overlapping paths
+            near_removed = 0
+            if remove_near_duplicate_paths:
+                before_near = len(path_data_list)
+                path_data_list = self._remove_near_duplicates(path_data_list, near_duplicate_distance)
+                near_removed = before_near - len(path_data_list)
+
+            # Step 5: Merge close paths (end-to-end joining)
             if merge_close_paths:
                 path_data_list = self._merge_close_paths(path_data_list, merge_distance)
             
-            # Step 4: Simplify paths
-            if simplify_paths:
-                path_data_list = self._simplify_paths(path_data_list, simplify_tolerance)
-            
-            # Step 5: Round coordinates
+            # Step 6: Round coordinates
             if round_coordinates:
                 path_data_list = self._round_coordinates(path_data_list, decimal_places)
             
@@ -149,8 +167,13 @@ class SVGPathCleanup:
                     "remove_short_paths": remove_short_paths,
                     "merge_close_paths": merge_close_paths,
                     "simplify_paths": simplify_paths,
+                    "remove_near_duplicate_paths": remove_near_duplicate_paths,
                     "round_coordinates": round_coordinates,
                     "remove_duplicate_paths": remove_duplicate_paths
+                },
+                "removed_detail": {
+                    "exact_duplicates": int(exact_removed),
+                    "near_duplicates": int(near_removed)
                 }
             }
             
@@ -207,6 +230,112 @@ class SVGPathCleanup:
                     unique_paths.append(path_data)
         
         return unique_paths
+
+    def _resample_polyline(self, points, n_points=50):
+        """
+        Resample polyline to fixed number of points along arc length
+        """
+        if len(points) < 2:
+            return points
+
+        # cumulative lengths
+        seg = np.diff(points, axis=0)
+        seg_len = np.sqrt((seg**2).sum(axis=1))
+        total = seg_len.sum()
+        if total == 0:
+            return np.repeat(points[:1], n_points, axis=0)
+
+        cum = np.concatenate([[0.0], np.cumsum(seg_len)])
+        target = np.linspace(0.0, total, n_points)
+
+        resampled = []
+        idx = 0
+        for t in target:
+            # advance idx to segment containing t
+            while idx < len(seg_len) and cum[idx+1] < t:
+                idx += 1
+            if idx >= len(seg_len):
+                resampled.append(points[-1])
+                continue
+            ratio = 0.0 if seg_len[idx] == 0 else (t - cum[idx]) / seg_len[idx]
+            p = points[idx] + ratio * (points[idx+1] - points[idx])
+            resampled.append(p)
+        return np.asarray(resampled)
+
+    def _bidirectional_mean_distance(self, A, B):
+        """
+        Compute bidirectional mean nearest-neighbor distance between two polylines.
+        Returns (mean_dist, max_dist) using the better orientation (forward/reversed).
+        """
+        if len(A) == 0 or len(B) == 0:
+            return np.inf, np.inf
+
+        def nn_stats(P, Q):
+            # pairwise distances using broadcasting
+            d = P[:, None, :] - Q[None, :, :]
+            d2 = np.sqrt((d**2).sum(axis=2))
+            min_pq = d2.min(axis=1)
+            min_qp = d2.min(axis=0)
+            mean_val = (min_pq.mean() + min_qp.mean()) / 2.0
+            max_val = max(min_pq.max(), min_qp.max())
+            return mean_val, max_val
+
+        m1, M1 = nn_stats(A, B)
+        m2, M2 = nn_stats(A, B[::-1])
+        if m2 < m1:
+            return m2, M2
+        return m1, M1
+
+    def _remove_near_duplicates(self, path_data_list, distance_thresh):
+        """
+        Remove paths that closely overlap existing ones (near duplicates).
+        Keep the longer path when two are near-duplicates.
+        """
+        if len(path_data_list) < 2:
+            return path_data_list
+
+        kept = []
+        used = [False] * len(path_data_list)
+
+        # Precompute resampled polylines and lengths
+        resampled = []
+        lengths = []
+        for pd in path_data_list:
+            pts = pd['points']
+            res = self._resample_polyline(pts, n_points=min(80, max(10, len(pts))))
+            resampled.append(res)
+            lengths.append(self._calculate_path_length(pts))
+
+        for i in range(len(path_data_list)):
+            if used[i]:
+                continue
+
+            base = path_data_list[i]
+            used[i] = True
+            to_keep = base
+
+            for j in range(i+1, len(path_data_list)):
+                if used[j]:
+                    continue
+                mean_d, max_d = self._bidirectional_mean_distance(resampled[i], resampled[j])
+                if mean_d <= distance_thresh and max_d <= distance_thresh * 2.5:
+                    # treat as near duplicate; keep longer
+                    if lengths[j] > lengths[path_data_list.index(to_keep)]:
+                        to_keep = path_data_list[j]
+                    used[j] = True
+
+            kept.append(to_keep)
+
+        # Recompute 'd' strings from points to ensure consistency
+        out = []
+        for pd in kept:
+            out.append({
+                'element': pd['element'],
+                'd': self._points_to_path_d(pd['points']),
+                'stroke': pd['stroke'],
+                'points': pd['points']
+            })
+        return out
     
     def _remove_short_paths(self, path_data_list, min_length):
         """
