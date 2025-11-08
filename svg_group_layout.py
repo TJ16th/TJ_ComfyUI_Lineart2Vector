@@ -201,21 +201,29 @@ class SVGGroupLayout:
                     y = int(spacing + r * (cell_h + spacing))
                     draw.line([(0, y), (canvas_width, y)], fill=grid_rgba, width=grid_line_width)
 
-        # Draw all paths as background (low opacity) if requested
-        if show_all_background:
+        # Draw all paths as background (low opacity) in each tile if requested
+        if show_all_background and placements:
             draw = ImageDraw.Draw(canvas, "RGBA")
             ns_path = "{http://www.w3.org/2000/svg}path"
             bg_stroke_rgba = self._color_to_rgba(background_stroke_color, background_opacity)
             if bg_stroke_rgba:
-                for path_elem in root.iter(ns_path):
-                    d = path_elem.get("d")
-                    if not d:
-                        continue
-                    # Draw at original viewBox position (scale 1:1, offset by viewBox origin)
-                    coords = self._parse_svg_path(d, vb_x, vb_y, 1.0, 1.0)
-                    if coords and len(coords) >= 2:
-                        # Draw stroke only (no fill) for background reference
-                        draw.line(coords, fill=bg_stroke_rgba, width=1)
+                # Draw background in each placement tile
+                for rule in placements:
+                    x = float(rule.get("x", 0))
+                    y = float(rule.get("y", 0))
+                    scale = float(rule.get("scale", 1.0))
+                    
+                    # Draw all paths at this tile position with same scale as foreground
+                    for path_elem in root.iter(ns_path):
+                        d = path_elem.get("d")
+                        if not d:
+                            continue
+                        coords = self._parse_svg_path(d, vb_x, vb_y, scale, scale)
+                        if coords and len(coords) >= 2:
+                            # Apply placement offset
+                            coords_off = [(x + px, y + py) for (px, py) in coords]
+                            # Draw stroke only (no fill) for background reference
+                            draw.line(coords_off, fill=bg_stroke_rgba, width=max(1, int(1 * scale)))
 
         # Build index for selector resolution
         # Allow selectors: #id, .class, tag (g), [attr=value]
