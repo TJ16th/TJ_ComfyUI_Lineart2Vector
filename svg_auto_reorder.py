@@ -41,6 +41,7 @@ class SVGAutoReorder:
                 "reverse": ("BOOLEAN", {"default": False, "tooltip": "Reverse final order"}),
                 "area_tiers": ("INT", {"default": 3, "min": 1, "max": 10, "step": 1, 
                                "tooltip": "Number of area tiers for area_then_proximity mode"}),
+                "renumber_ids": ("BOOLEAN", {"default": True, "tooltip": "Renumber path IDs as path0, path1, ... after reordering"}),
             },
         }
 
@@ -50,7 +51,7 @@ class SVGAutoReorder:
     CATEGORY = "TJ_Vector"
 
     def auto_reorder(self, svg_string: str, sort_mode: str = "area_then_proximity", 
-                     reverse: bool = False, area_tiers: int = 3):
+                     reverse: bool = False, area_tiers: int = 3, renumber_ids: bool = True):
         # Parse SVG
         try:
             root = ET.fromstring(svg_string)
@@ -116,20 +117,27 @@ class SVGAutoReorder:
         for item in path_data:
             target_parent.remove(item["element"])
         
-        for item in sorted_data:
+        for idx, item in enumerate(sorted_data):
+            # Renumber IDs if requested
+            if renumber_ids:
+                item["element"].set("id", f"path{idx}")
             target_parent.append(item["element"])
 
         # Build stats
         stats = {
             "sort_mode": sort_mode,
+            "renumber_ids": renumber_ids,
             "total_paths": len(sorted_data),
             "paths": []
         }
         
         for idx, item in enumerate(sorted_data):
+            old_id = item["id"]
+            new_id = f"path{idx}" if renumber_ids else old_id
             stats["paths"].append({
                 "new_index": idx,
-                "id": item["id"],
+                "old_id": old_id,
+                "new_id": new_id,
                 "area": round(item["area"], 2),
                 "centroid": [round(item["centroid"][0], 1), round(item["centroid"][1], 1)]
             })
